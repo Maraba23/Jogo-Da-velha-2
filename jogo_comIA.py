@@ -349,7 +349,7 @@ while True:
                     else:
                         # Chama a função minmax para obter a melhor jogada
                         print(next_sub_board)
-                        score, best_move = minmax(main_board, 9, float('-inf'), float('inf'), True, next_sub_board)
+                        score, best_move = minmax(main_board, 8, float('-inf'), float('inf'), True, next_sub_board)
                         print(score, best_move)
                         # Faz a jogada
                         play_move(best_move[0], best_move[1], best_move[2], best_move[3], current_player)
@@ -372,12 +372,10 @@ while True:
     # Desenho do jogo
     draw_lines()
     draw_figures()
-
-    if game_over:
-        pygame.display.update()
-        pygame.time.wait(10000)
-        pygame.quit()
-
     # Atualiza o display
     pygame.display.update()
+
+    if game_over:
+        pygame.time.wait(10000)
+        pygame.quit()
 

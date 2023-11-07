@@ -114,8 +114,6 @@ def check_winner():
     else: # No caso de empate em número de sub-tabuleiros ganhos, ou se ainda não houver vencedores
         return None
 
-
-
 # Função para jogar o próximo movimento no tabuleiro correto
 def play_move(current_row, current_col, sub_row, sub_col, player):
     global main_board, current_player, game_over, last_move
@@ -128,11 +126,11 @@ def play_move(current_row, current_col, sub_row, sub_col, player):
         # Verifica se a jogada atual ganhou o sub-tabuleiro
         if check_sub_winner(main_board[current_row][current_col], player):
             # Poderíamos aqui marcar este sub-tabuleiro como ganho no tabuleiro principal, se necessário
-            
-            # Verifica se este movimento levou a um tabuleiro já completo
-            next_row, next_col = sub_row, sub_col
-            if check_sub_winner(main_board[next_row][next_col], 'X') or check_sub_winner(main_board[next_row][next_col], 'O'):
-                game_over = True  # Fim do jogo de acordo com a regra 4
+            pygame.draw.rect(screen, RED, (current_col * SQUARE_SIZE, current_row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+        # Verifica se este movimento levou a um tabuleiro já completo
+        next_row, next_col = sub_row, sub_col
+        if check_sub_winner(main_board[next_row][next_col], 'X') or check_sub_winner(main_board[next_row][next_col], 'O'):
+            game_over = True  # Fim do jogo de acordo com a regra 4
 
         # Se o jogo não terminou, muda o jogador
         if not game_over:
@@ -185,7 +183,9 @@ while True:
     if game_over:
         winner = check_winner()
         # Código para exibir o vencedor ou finalizar o jogo
-        # Por exemplo: print(f"O jogador {winner} venceu!") ou mostrar em tela
+        print(f"O vencedor é {winner}")
+        pygame.time.wait(3000)
+        pygame.quit()
 
     # Atualiza o display
     pygame.display.update()

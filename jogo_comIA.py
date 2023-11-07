@@ -1,6 +1,6 @@
 import pygame
 import sys
-from AI_minmax import minimax_alpha_beta
+import copy
 
 # Inicializa o Pygame
 pygame.init()
@@ -114,47 +114,7 @@ def check_winner():
         return 'O'
     else: # No caso de empate em número de sub-tabuleiros ganhos, ou se ainda não houver vencedores
         return None
-
-# Função para obter todos os movimentos possíveis para um jogador
-def get_all_possible_moves(board, player):
-    possible_moves = []
-    for row in range(3):
-        for col in range(3):
-            for sub_row in range(3):
-                for sub_col in range(3):
-                    if board[row][col][sub_row][sub_col] is None:
-                        possible_moves.append((row, col, sub_row, sub_col))
-    return possible_moves
-
-# Função para realizar um movimento no tabuleiro
-def make_move(board, move, player):
-    row, col, sub_row, sub_col = move
-    board[row][col][sub_row][sub_col] = player
-
-# Função para desfazer um movimento no tabuleiro
-def undo_move(board, move):
-    row, col, sub_row, sub_col = move
-    board[row][col][sub_row][sub_col] = None
-
-
-def ai_move():
-    global current_player, last_move
-    best_score = float('-inf')
-    best_move = None
-
-    for move in get_all_possible_moves(main_board, 'O'):
-        make_move(main_board, move, 'O')
-        score = minimax_alpha_beta(main_board, 2, float('-inf'), float('inf'), False, move)  # Adicionando o último movimento aqui
-        undo_move(main_board, move)
-        if score > best_score:
-            best_score = score
-            best_move = move
-
-    if best_move:
-        make_move(main_board, best_move, 'O')
-        last_move = (best_move[0], best_move[1])
-        current_player = 'X'
-
+    
 
 # Função para jogar o próximo movimento no tabuleiro correto
 def play_move(current_row, current_col, sub_row, sub_col, player):
@@ -168,11 +128,11 @@ def play_move(current_row, current_col, sub_row, sub_col, player):
         # Verifica se a jogada atual ganhou o sub-tabuleiro
         if check_sub_winner(main_board[current_row][current_col], player):
             # Poderíamos aqui marcar este sub-tabuleiro como ganho no tabuleiro principal, se necessário
-            
-            # Verifica se este movimento levou a um tabuleiro já completo
-            next_row, next_col = sub_row, sub_col
-            if check_sub_winner(main_board[next_row][next_col], 'X') or check_sub_winner(main_board[next_row][next_col], 'O'):
-                game_over = True  # Fim do jogo de acordo com a regra 4
+            pygame.draw.rect(screen, RED, (current_col * SQUARE_SIZE, current_row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
+        # Verifica se este movimento levou a um tabuleiro já completo
+        next_row, next_col = sub_row, sub_col
+        if check_sub_winner(main_board[next_row][next_col], 'X') or check_sub_winner(main_board[next_row][next_col], 'O'):
+            game_over = True  # Fim do jogo de acordo com a regra 4
 
         # Se o jogo não terminou, muda o jogador
         if not game_over:
@@ -189,6 +149,126 @@ def play_move(current_row, current_col, sub_row, sub_col, player):
         # Você pode tratar uma jogada inválida como preferir
 
 
+# minmax com poda alfa-beta
+def minmax(board, depth, alpha, beta, maximizing_player, next_sub_board):
+    global game_over
+    if game_over or depth == 0:
+        return evaluate(board), None
+
+    if maximizing_player:
+        max_eval = float('-inf')
+        best_move = None
+        for move in get_possible_moves(board, next_sub_board):
+            board[move[0]][move[1]][move[2]][move[3]] = 'O'
+            eval, _ = minmax(board, depth - 1, alpha, beta, False, (move[2], move[3]))
+            print(f"Move: {move} Eval: {eval} MaxEval: {max_eval} Alpha: {alpha} Beta: {beta}")
+            board[move[0]][move[1]][move[2]][move[3]] = None
+            if eval > max_eval:
+                max_eval = eval
+                best_move = move
+            alpha = max(alpha, eval)
+            if beta <= alpha:
+                break
+        return max_eval, best_move
+    else:
+        min_eval = float('inf')
+        best_move = None
+        for move in get_possible_moves(board, next_sub_board):
+            board[move[0]][move[1]][move[2]][move[3]] = 'X'
+            eval, _ = minmax(board, depth - 1, alpha, beta, True, (move[2], move[3]))
+            board[move[0]][move[1]][move[2]][move[3]] = None
+            if eval < min_eval:
+                min_eval = eval
+                best_move = move
+            beta = min(beta, eval)
+            if beta <= alpha:
+                break
+        return min_eval, best_move
+
+    
+
+# Função para obter as jogadas possíveis
+def get_possible_moves(board, next_sub_board):
+    possible_moves = []
+    if next_sub_board is None:
+        for row in range(3):
+            for col in range(3):
+                for sub_row in range(3):
+                    for sub_col in range(3):
+                        if board[row][col][sub_row][sub_col] is None:
+                            possible_moves.append((row, col, sub_row, sub_col))
+    else:
+        row, col = next_sub_board
+        for sub_row in range(3):
+            for sub_col in range(3):
+                if board[row][col][sub_row][sub_col] is None:
+                    possible_moves.append((row, col, sub_row, sub_col))
+    #print(f"Movimentos possiveis: {possible_moves}")
+    return possible_moves
+
+
+
+def evaluate(board):
+    # Os pontos para a IA são calculados da seguinte forma:
+    # 1. Cada sub-tabuleiro ganho vale 1000 pontos
+    # 2. Cada sub-tabuleiro perdido vale -1000 pontos
+    # 3. Cada sub-tabuleiro empatado vale 100 pontos
+    # 4. Cada jogada no sub-tabuleiro que esta perto de ser ganho vale 10
+    # 5. Cada jogada no sub-tabuleiro que esta perto de ser perdido vale -10
+    # 6. Se o jogo acabou e a IA ganhou, vale 10000 pontos
+    # 7. Se o jogo acabou e a IA perdeu, vale -10000 pontos
+    # 8. Se o jogo acabou e empatou, vale 0 pontos
+
+
+    # Pontuação inicial
+    score = 0
+
+    # Verifica se o jogo acabou
+    global game_over
+    if game_over:
+        winner = check_winner()
+        if winner == 'O':
+            score += 10000
+        elif winner == 'X':
+            score -= 10000
+    else:
+        winner = check_winner()
+        if winner == 'O':
+            score += 10000
+        elif winner == 'X':
+            score -= 10000
+
+    
+
+    # Verifica os sub-tabuleiros ganhos e perdidos
+    score += count_won_sub_boards(board, 'O') * 500
+    score -= count_won_sub_boards(board, 'X') * 1000
+
+    # Verifica os sub-tabuleiros empatados
+    for row in range(3):
+        for col in range(3):
+            if is_board_full(board[row][col]):
+                score += 100
+
+    # Verifica as jogadas que podem levar a um sub-tabuleiro ganho ou perdido
+    # for row in range(3):
+    #     for col in range(3):
+    #         for sub_row in range(3):
+    #             for sub_col in range(3):
+    #                 if board[row][col][sub_row][sub_col] is None:
+    #                     board[row][col][sub_row][sub_col] = 'O'
+    #                     if check_sub_winner(board[row][col], 'O'):
+    #                         score += 10
+    #                     board[row][col][sub_row][sub_col] = 'X'
+    #                     if check_sub_winner(board[row][col], 'X'):
+    #                         score -= 10
+    #                     board[row][col][sub_row][sub_col] = None
+    
+
+    return score
+
+
+
 current_player = 'X'  # X começa
 next_sub_board = None  # Qualquer um pode ser jogado inicialmente
 game_over = False
@@ -202,42 +282,53 @@ while True:
         if event.type == pygame.MOUSEBUTTONDOWN and not game_over:
             mouseX, mouseY = pygame.mouse.get_pos()
             
-            if current_player == 'X':  # Só permite ao jogador humano 'X' jogar se não for a vez da IA
-                clicked_row = int(mouseY // SQUARE_SIZE)
-                clicked_col = int(mouseX // SQUARE_SIZE)
-                
-                sub_clicked_row = (mouseY % SQUARE_SIZE) // (SQUARE_SIZE / 3)
-                sub_clicked_col = (mouseX % SQUARE_SIZE) // (SQUARE_SIZE / 3)
-                
-                # Se o próximo sub-tabuleiro é None, qualquer um pode ser jogado
-                if next_sub_board is None or (clicked_row, clicked_col) == next_sub_board:
-                    if main_board[clicked_row][clicked_col][int(sub_clicked_row)][int(sub_clicked_col)] is None:
-                        play_move(clicked_row, clicked_col, int(sub_clicked_row), int(sub_clicked_col), 'X')
+            clicked_row = int(mouseY // SQUARE_SIZE)
+            clicked_col = int(mouseX // SQUARE_SIZE)
+            
+            sub_clicked_row = (mouseY % SQUARE_SIZE) // (SQUARE_SIZE / 3)
+            sub_clicked_col = (mouseX % SQUARE_SIZE) // (SQUARE_SIZE / 3)
+            
+            # Se o próximo sub-tabuleiro é None, qualquer um pode ser jogado
+            if next_sub_board is None or (clicked_row, clicked_col) == next_sub_board:
+                if main_board[clicked_row][clicked_col][int(sub_clicked_row)][int(sub_clicked_col)] is None:
+
+                    if current_player == 'X':
+                        play_move(clicked_row, clicked_col, int(sub_clicked_row), int(sub_clicked_col), current_player)
                         # A próxima jogada deve ser no sub-tabuleiro correspondente à última jogada feita
                         next_sub_board = (int(sub_clicked_row), int(sub_clicked_col))
-                        current_player = 'O'  # Troca para a IA após o jogador humano jogar
-                else:
-                    print(f"Você deve jogar no sub-tabuleiro {next_sub_board}")
 
-    # IA faz sua jogada se for sua vez e o jogo não estiver acabado
-    if current_player == 'O' and not game_over:
-        ai_move()
-        next_sub_board = last_move  # A próxima jogada do humano deve ser no sub-tabuleiro correspondente à última jogada da IA
-        current_player = 'X'  # Troca para o jogador humano após a IA jogar
+                    else:
+                        # Chama a função minmax para obter a melhor jogada
+                        print(next_sub_board)
+                        score, best_move = minmax(main_board, 9, float('-inf'), float('inf'), True, next_sub_board)
+                        print(score, best_move)
+                        # Faz a jogada
+                        play_move(best_move[0], best_move[1], best_move[2], best_move[3], current_player)
+                        # A próxima jogada deve ser no sub-tabuleiro correspondente à última jogada feita
+                        next_sub_board = (best_move[2], best_move[3])
+            else:
+                print(f"Você deve jogar no sub-tabuleiro {next_sub_board}")
 
-    # Desenho do jogo
-    draw_lines()
-    draw_figures()
+
 
     # Checar se o jogo acabou devido a um sub-tabuleiro cheio e início de um novo turno
     if game_over:
         winner = check_winner()
         # Código para exibir o vencedor ou finalizar o jogo
-        # Por exemplo: print(f"O jogador {winner} venceu!") ou mostrar em tela
-        # Uma maneira de sair do loop principal após o jogo terminar, por exemplo:
-        # break  # Este comando irá sair do loop 'while'
+        if winner is None:
+            print("Empate")
+        print(f"O vencedor é {winner}")
+
+
+    # Desenho do jogo
+    draw_lines()
+    draw_figures()
+
+    if game_over:
+        pygame.display.update()
+        pygame.time.wait(10000)
+        pygame.quit()
 
     # Atualiza o display
     pygame.display.update()
-
 

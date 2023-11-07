@@ -207,7 +207,7 @@ def get_possible_moves(board, next_sub_board):
     return possible_moves
 
 
-
+'''
 def evaluate(board):
     # Os pontos para a IA são calculados da seguinte forma:
     # 1. Cada sub-tabuleiro ganho vale 1000 pontos
@@ -264,6 +264,55 @@ def evaluate(board):
     #                         score -= 10
     #                     board[row][col][sub_row][sub_col] = None
     
+
+    return score
+'''
+def sub_winner(sub_board, player):
+    # Verifica linhas horizontais e verticais
+    for col_row in range(3):
+        if all([sub_board[col_row][i] == player for i in range(3)]) or all([sub_board[i][col_row] == player for i in range(3)]):
+            return True
+    # Verifica diagonais
+    if sub_board[0][0] == sub_board[1][1] == sub_board[2][2] == player or sub_board[0][2] == sub_board[1][1] == sub_board[2][0] == player:
+        return True
+    return False
+
+def is_sub_board_full(sub_board):
+    for row in sub_board:
+        if None in row:
+            return False
+    return True
+
+def evaluate(board):
+    score = 0
+
+    # Avaliar o resultado do jogo
+    winner = check_winner() # Ajuste a função para receber o tabuleiro como argumento
+    if winner == 'O':
+        score += 10000
+    elif winner == 'X':
+        score -= 10000
+
+    # Avaliar sub-tabuleiros
+    for row in range(3):
+        for col in range(3):
+            sub_board = board[row][col]
+            if sub_winner(sub_board, 'O'):
+                score += 1000
+            elif sub_winner(sub_board, 'X'):
+                score -= 2000
+            elif is_sub_board_full(sub_board):
+                score += 1000
+            else:
+                # Avaliar jogadas que estão perto de ganhar ou perder
+                o_count = sum(cell == 'O' for row in sub_board for cell in row)
+                x_count = sum(cell == 'X' for row in sub_board for cell in row)
+                if o_count == 2 and x_count == 0:
+                    score += 30
+                elif x_count == 2 and o_count == 0:
+                    score -= 30
+    
+    # Outras heurísticas aqui (como controle de cantos, centro, etc.)
 
     return score
 

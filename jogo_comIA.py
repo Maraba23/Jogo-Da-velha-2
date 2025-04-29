@@ -578,8 +578,8 @@ while True:
         if pygame.time.get_ticks() - ai_move_delay > 800:  # 800 ms de atraso
             # Obtém a melhor jogada
             try:
-                _, best_move = ai.minmax(main_board, difficulty, float('-inf'), float('inf'), True, next_sub_board)
-                
+                reward, best_move = ai.minmax(main_board, difficulty, float('-inf'), float('inf'), True, next_sub_board)
+                print(f"Melhor jogada: {best_move} com recompensa: {reward}")
                 if best_move:
                     play_move(best_move[0], best_move[1], best_move[2], best_move[3], 'O')
                 else:

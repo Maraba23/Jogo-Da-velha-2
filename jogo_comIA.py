@@ -239,7 +239,7 @@ def display_game_status(current_player, next_sub_board, x_wins, o_wins):
     pygame.draw.line(screen, LINE_COLOR, (0, HEIGHT-50), (WIDTH, HEIGHT-50), 2)
     
     # Quem é o jogador atual
-    player_text = f"Jogador: {'X (Você)' if current_player == 'X' else 'O (IA)'}"
+    player_text = f"Deep: {difficulty}"#f"Jogador: {'X (Você)' if current_player == 'X' else 'O (IA)'}"
     player_surface = font.render(player_text, True, TEXT_COLOR)
     screen.blit(player_surface, (10, HEIGHT-40))
     
@@ -493,11 +493,11 @@ def show_title_screen():
                     # Define a dificuldade
                     global difficulty
                     if selected_difficulty == "Fácil":
-                        difficulty = 2
-                    elif selected_difficulty == "Normal":
-                        difficulty = 3
-                    else:  # Difícil
                         difficulty = 4
+                    elif selected_difficulty == "Normal":
+                        difficulty = 6
+                    else:  # Difícil
+                        difficulty = 8
                     
                     running = False  # Sai da tela inicial
                     

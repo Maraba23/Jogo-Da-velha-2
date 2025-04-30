@@ -239,7 +239,11 @@ def display_game_status(current_player, next_sub_board, x_wins, o_wins):
     pygame.draw.line(screen, LINE_COLOR, (0, HEIGHT-50), (WIDTH, HEIGHT-50), 2)
     
     # Quem é o jogador atual
-    player_text = f"Deep: {difficulty}"#f"Jogador: {'X (Você)' if current_player == 'X' else 'O (IA)'}"
+    if current_player == human_player:
+        player_text = f"Deep: {difficulty} | {current_player} (Você)"
+    else:
+        player_text = f"Deep: {difficulty} | {current_player} (IA)"
+    
     player_surface = font.render(player_text, True, TEXT_COLOR)
     screen.blit(player_surface, (10, HEIGHT-40))
     
@@ -251,9 +255,9 @@ def display_game_status(current_player, next_sub_board, x_wins, o_wins):
     
     # Próximo tabuleiro
     if next_sub_board is not None:
-        next_board_text = f"Próximo tabuleiro: ({next_sub_board[0]}, {next_sub_board[1]})"
+        next_board_text = f"Próximo: ({next_sub_board[0]}, {next_sub_board[1]})"
     else:
-        next_board_text = "Próximo tabuleiro: qualquer um"
+        next_board_text = "Próximo: qualquer um"
     next_board_surface = small_font.render(next_board_text, True, TEXT_COLOR)
     screen.blit(next_board_surface, (WIDTH - next_board_surface.get_width() - 10, HEIGHT-40))
 
@@ -354,12 +358,12 @@ def animate_game_end(winner):
         elapsed = pygame.time.get_ticks() - start_time
         scale = 1.0 + 0.1 * math.sin(elapsed / 150)  # Pulsação suave
         
-        if winner == 'X':
+        if winner == human_player:
             msg = "VOCÊ VENCEU!"
-            color = CROSS_COLOR
-        elif winner == 'O':
+            color = CROSS_COLOR if human_player == 'X' else CIRCLE_COLOR
+        elif winner == ai_player:
             msg = "IA VENCEU!"
-            color = CIRCLE_COLOR
+            color = CROSS_COLOR if ai_player == 'X' else CIRCLE_COLOR
         else:
             msg = "EMPATE!"
             color = (100, 100, 100)
@@ -388,6 +392,8 @@ game_over = False
 ai_thinking = False
 ai_move_delay = 0
 difficulty = 3  # Profundidade padrão para o minimax
+human_player = 'X'  # Símbolo do jogador humano (padrão)
+ai_player = 'O'    # Símbolo da IA (padrão)
 
 # Timer para animação da IA "pensando"
 thinking_timer = 0
@@ -399,15 +405,21 @@ def reset_game():
     
     main_board = [[[[None]*3 for _ in range(3)] for _ in range(3)] for _ in range(3)]
     won_sub_boards = [[None for _ in range(3)] for _ in range(3)]
-    current_player = 'X'
+    current_player = 'X'  # X sempre começa, independente de quem está jogando com X
     next_sub_board = None
     game_over = False
     particles = []
+    
+    # Se a IA joga como X, ela começa
+    if ai_player == 'X':
+        ai_thinking = True
+        ai_move_delay = pygame.time.get_ticks()
 
 # Tela inicial
 def show_title_screen():
     running = True
     selected_difficulty = "Normal"  # Padrão
+    player_symbol = "X"  # Padrão - jogador usa X
     
     while running:
         screen.fill((230, 230, 250))
@@ -437,9 +449,38 @@ def show_title_screen():
             screen.blit(text, text_rect)
             y_pos += 25
         
+        # Seleção de símbolo
+        y_pos = HEIGHT/2 + 20
+        symbol_text = font.render("Escolha seu símbolo:", True, TEXT_COLOR)
+        symbol_text_rect = symbol_text.get_rect(center=(WIDTH/2, y_pos))
+        screen.blit(symbol_text, symbol_text_rect)
+        
+        y_pos += 40
+        symbols = ["X", "O"]
+        symbol_rects = []
+        
+        for i, symbol in enumerate(symbols):
+            rect_x = WIDTH/2 - 70 + i * 80
+            symbol_rect = pygame.Rect(rect_x, y_pos - 20, 60, 40)
+            symbol_rects.append(symbol_rect)
+            
+            if symbol == player_symbol:
+                pygame.draw.rect(screen, (200, 220, 255), symbol_rect, border_radius=5)
+                color = (50, 120, 200)
+            else:
+                color = TEXT_COLOR
+            
+            text = font.render(symbol, True, color)
+            text_rect = text.get_rect(center=symbol_rect.center)
+            screen.blit(text, text_rect)
+            
+            # Efeito hover
+            if symbol_rect.collidepoint(pygame.mouse.get_pos()):
+                pygame.draw.rect(screen, (220, 230, 255), symbol_rect, width=2, border_radius=5)
+        
         # Botões de dificuldade
         difficulties = ["Fácil", "Normal", "Difícil"]
-        y_pos = HEIGHT/2 + 50
+        y_pos += 60
         
         for diff in difficulties:
             if diff == selected_difficulty:
@@ -472,7 +513,7 @@ def show_title_screen():
             y_pos += 50
         
         # Botão de iniciar
-        start_rect = pygame.Rect(WIDTH/2 - 80, HEIGHT - 120, 160, 50)
+        start_rect = pygame.Rect(WIDTH/2 - 80, HEIGHT - 80, 160, 50)
         pygame.draw.rect(screen, (50, 180, 50), start_rect, border_radius=10)
         
         # Efeito hover
@@ -489,15 +530,30 @@ def show_title_screen():
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN:
+                # Verifica clique nos símbolos
+                for i, rect in enumerate(symbol_rects):
+                    if rect.collidepoint(event.pos):
+                        player_symbol = symbols[i]
+                
+                # Verifica clique no botão iniciar
                 if start_rect.collidepoint(event.pos):
                     # Define a dificuldade
-                    global difficulty
+                    global difficulty, ai_player, human_player, ai_thinking, ai_move_delay
                     if selected_difficulty == "Fácil":
                         difficulty = 4
                     elif selected_difficulty == "Normal":
                         difficulty = 6
                     else:  # Difícil
                         difficulty = 8
+                    
+                    # Define os símbolos dos jogadores
+                    human_player = player_symbol
+                    ai_player = "O" if human_player == "X" else "X"
+                    
+                    # Se a IA começa (se jogador humano escolheu 'O')
+                    if human_player == 'O':
+                        ai_thinking = True
+                        ai_move_delay = pygame.time.get_ticks()
                     
                     running = False  # Sai da tela inicial
                     
@@ -535,8 +591,8 @@ while True:
             sub_clicked_row = int((mouseY % SQUARE_SIZE) // (SQUARE_SIZE / 3))
             sub_clicked_col = int((mouseX % SQUARE_SIZE) // (SQUARE_SIZE / 3))
             
-            # Jogada do jogador humano (X)
-            if current_player == 'X':
+            # Jogada do jogador humano (depende do símbolo escolhido)
+            if current_player == human_player:
                 # Verifica se o sub-tabuleiro é válido
                 if next_sub_board is None or (clicked_row, clicked_col) == next_sub_board:
                     # Tenta fazer a jogada
@@ -552,7 +608,7 @@ while True:
     draw_lines()
     
     # Destaca o próximo sub-tabuleiro se o jogo não acabou
-    if not game_over and current_player == 'X':
+    if not game_over and current_player == human_player:
         highlight_next_board(next_sub_board)
     
     # Desenha os símbolos
@@ -564,24 +620,30 @@ while True:
     o_wins = sum(row.count('O') for row in won_sub_boards)
     display_game_status(current_player, next_sub_board, x_wins, o_wins)
     
-    # Jogada da IA (O)
-    if current_player == 'O' and not game_over and ai_thinking:
+    # Jogada da IA
+    if current_player == ai_player and not game_over and ai_thinking:
         # Animação de "pensando"
         if pygame.time.get_ticks() % 300 < 20:  # Atualiza a cada 300ms
             thinking_dots = "." * ((thinking_timer % 3) + 1)
             thinking_timer += 1
             
         thinking_text = f"IA pensando{thinking_dots}"
-        display_message(thinking_text, HEIGHT/2 - 200, 'normal', CIRCLE_COLOR)
+        display_message(thinking_text, HEIGHT/2 - 200, 'normal', 
+                      CIRCLE_COLOR if ai_player == 'O' else CROSS_COLOR)
         
         # Atraso para dar a impressão de que a IA está "pensando"
         if pygame.time.get_ticks() - ai_move_delay > 800:  # 800 ms de atraso
             # Obtém a melhor jogada
             try:
-                reward, best_move = ai.minmax(main_board, difficulty, float('-inf'), float('inf'), True, next_sub_board)
+                # Se a IA joga com 'O', ela quer maximizar. Se joga com 'X', quer minimizar
+                is_maximizing = ai_player == 'O'
+                
+                reward, best_move = ai.minmax(main_board, difficulty, float('-inf'), float('inf'), 
+                                       is_maximizing, next_sub_board)
                 print(f"Melhor jogada: {best_move} com recompensa: {reward}")
+                
                 if best_move:
-                    play_move(best_move[0], best_move[1], best_move[2], best_move[3], 'O')
+                    play_move(best_move[0], best_move[1], best_move[2], best_move[3], current_player)
                 else:
                     # Se não houver jogada válida, declaramos um empate
                     game_over = True
@@ -591,7 +653,7 @@ while True:
                 possible_moves = ai.get_possible_moves(main_board, next_sub_board)
                 if possible_moves:
                     move = random.choice(possible_moves)
-                    play_move(move[0], move[1], move[2], move[3], 'O')
+                    play_move(move[0], move[1], move[2], move[3], current_player)
                 else:
                     game_over = True
                     

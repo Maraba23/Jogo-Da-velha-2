@@ -9,7 +9,8 @@ def minmax(board, depth, alpha, beta, maximizing_player, next_sub_board):
         depth: Profundidade máxima de busca
         alpha: Valor alfa para poda
         beta: Valor beta para poda
-        maximizing_player: True se é o jogador que maximiza (IA), False caso contrário
+        maximizing_player: True se é o jogador que maximiza (IA jogando como 'O'), 
+                          False se é o jogador que minimiza (IA jogando como 'X')
         next_sub_board: Tupla (row, col) indicando o próximo sub-tabuleiro a jogar
         
     Returns:
@@ -19,14 +20,14 @@ def minmax(board, depth, alpha, beta, maximizing_player, next_sub_board):
     if is_game_over(board) or depth == 0:
         return evaluate(board), None
 
-    if maximizing_player:
+    if maximizing_player:  # IA jogando como 'O'
         max_eval = float('-inf')
         best_move = None
         for move in get_possible_moves(board, next_sub_board):
             # Simula o movimento
             board[move[0]][move[1]][move[2]][move[3]] = 'O'
             eval, _ = minmax(board, depth - 1, alpha, beta, False, (move[2], move[3]))
-            print(board)
+            #print(board)
             # Desfaz o movimento
             board[move[0]][move[1]][move[2]][move[3]] = None
             
@@ -37,7 +38,7 @@ def minmax(board, depth, alpha, beta, maximizing_player, next_sub_board):
             if beta <= alpha:
                 break
         return max_eval, best_move
-    else:
+    else:  # IA jogando como 'X' ou simulando jogador humano
         min_eval = float('inf')
         best_move = None
         for move in get_possible_moves(board, next_sub_board):

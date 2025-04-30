@@ -248,7 +248,7 @@ def display_game_status(current_player, next_sub_board, x_wins, o_wins):
     screen.blit(player_surface, (10, HEIGHT-40))
     
     # Pontuação
-    score_text = f"Pontuação: X: {x_wins}  |  O: {o_wins}"
+    score_text = f"X: {x_wins}  |  O: {o_wins}"
     score_surface = font.render(score_text, True, TEXT_COLOR)
     score_rect = score_surface.get_rect(center=(WIDTH/2, HEIGHT-25))
     screen.blit(score_surface, score_rect)

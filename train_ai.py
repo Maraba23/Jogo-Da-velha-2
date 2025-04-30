@@ -25,7 +25,7 @@ CONFIG = {
     "target_update": 1000,        # Frequência para atualizar a rede alvo
     "save_interval": 5000,        # Frequência para salvar o modelo
     "checkpoint_dir": "model_checkpoints",  # Diretório para salvar checkpoints
-    "episodes": 2800            # Número de jogos a serem treinados
+    "episodes": 4000            # Número de jogos a serem treinados
 }
 
 # Garante que o diretório de checkpoints existe

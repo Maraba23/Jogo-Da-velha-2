@@ -13,16 +13,16 @@ import ai  # Importa o módulo de IA do jogo da velha avançado
 
 # Configurações de treinamento
 CONFIG = {
-    "model_symbol": "0",          # Símbolo que o modelo vai usar para treinar (X ou O)
+    "model_symbol": "O",          # Símbolo que o modelo vai usar para treinar (X ou O)
     "opponent_difficulty": 4,     # Dificuldade do oponente (1-8)
-    "learning_rate": 0.0005,      # Taxa de aprendizado
-    "gamma": 0.99,                # Fator de desconto para recompensas futuras
+    "learning_rate": 0.0001,      # Taxa de aprendizado
+    "gamma": 0.95,                # Fator de desconto para recompensas futuras
     "epsilon_start": 1.0,         # Exploração inicial (1 = 100% aleatório)
-    "epsilon_end": 0.1,           # Exploração final (0.1 = 10% aleatório)
-    "epsilon_decay": 100000,      # Quantas etapas para reduzir epsilon
-    "batch_size": 128,            # Tamanho do lote para treinamento
-    "memory_size": 10000,         # Tamanho da memória de experiência
-    "target_update": 1000,        # Frequência para atualizar a rede alvo
+    "epsilon_end": 0.05,           # Exploração final (0.1 = 10% aleatório)
+    "epsilon_decay": 40000,      # Quantas etapas para reduzir epsilon
+    "batch_size": 64,            # Tamanho do lote para treinamento
+    "memory_size": 20000,         # Tamanho da memória de experiência
+    "target_update": 500,        # Frequência para atualizar a rede alvo
     "save_interval": 5000,        # Frequência para salvar o modelo
     "checkpoint_dir": "model_checkpoints",  # Diretório para salvar checkpoints
     "episodes": 4000            # Número de jogos a serem treinados
@@ -147,11 +147,13 @@ class GameState:
         self.main_board[row][col][sub_row][sub_col] = self.current_player
         
         # Verifica se o sub-tabuleiro foi ganho
+        sub_tabuleiro_ganho = False
         if ai.sub_winner(self.main_board[row][col], self.current_player):
             self.won_sub_boards[row][col] = self.current_player
             reward += 1  # Recompensa por ganhar um sub-tabuleiro
-            
-        # Próximo sub-tabuleiro será baseado na jogada atual
+            sub_tabuleiro_ganho = True
+        
+        # Determina o próximo sub-tabuleiro
         next_row, next_col = sub_row, sub_col
         
         # Se o próximo sub-tabuleiro já está ganho ou completo, liberamos para qualquer sub-tabuleiro
@@ -169,15 +171,42 @@ class GameState:
         if x_wins + o_wins == 9 or x_wins > 4 or o_wins > 4:
             self.game_over = True
             
-            # Recompensa por ganhar o jogo
-            if (self.current_player == 'X' and x_wins > o_wins) or (self.current_player == 'O' and o_wins > x_wins):
-                reward += 10
-            elif (self.current_player == 'X' and x_wins < o_wins) or (self.current_player == 'O' and o_wins < x_wins):
-                reward -= 5
-                
+            # Recompensa final com base no resultado do jogo
+            if self.current_player == 'X':
+                if x_wins > o_wins:
+                    # Vitória: +10 pontos
+                    reward += 10
+                    # Não precisamos adicionar +1 por sub-tabuleiro vencido pois já fizemos isso acima
+                    # quando cada sub-tabuleiro foi conquistado
+                    
+                    # Subtrai -1 por cada sub-tabuleiro perdido
+                    reward -= o_wins
+                elif x_wins < o_wins:
+                    # Derrota: -10 pontos
+                    reward -= 10
+                    # Já adicionamos +1 por cada sub-tabuleiro vencido quando aconteceu
+                    
+                    # Subtrai -1 por cada sub-tabuleiro perdido
+                    reward -= o_wins
+            else:  # O jogador é 'O'
+                if o_wins > x_wins:
+                    # Vitória: +10 pontos
+                    reward += 10
+                    # Não precisamos adicionar +1 por sub-tabuleiro vencido pois já fizemos isso acima
+                    
+                    # Subtrai -1 por cada sub-tabuleiro perdido
+                    reward -= x_wins
+                elif o_wins < x_wins:
+                    # Derrota: -10 pontos
+                    reward -= 10
+                    # Já adicionamos +1 por cada sub-tabuleiro vencido quando aconteceu
+                    
+                    # Subtrai -1 por cada sub-tabuleiro perdido
+                    reward -= x_wins
+        
         # Troca o jogador
         self.current_player = 'O' if self.current_player == 'X' else 'X'
-            
+        
         return self.get_state_tensor(), reward, self.game_over
 
     def opponent_move(self, difficulty):
@@ -240,41 +269,77 @@ class ReplayMemory:
         return len(self.memory)
 
 # Classe para a rede neural Q (Deep Q-Network)
+# class DQN(nn.Module):
+#     def __init__(self):
+#         super(DQN, self).__init__()
+        
+#         # Camadas convolucionais
+#         self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1)
+#         self.bn1 = nn.BatchNorm2d(64)
+#         self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
+#         self.bn2 = nn.BatchNorm2d(128)
+#         self.conv3 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
+#         self.bn3 = nn.BatchNorm2d(256)
+        
+#         # Camadas densas
+#         self.fc1 = nn.Linear(256 * 9 * 9, 512)
+#         self.fc2 = nn.Linear(512, 256)
+#         self.fc3 = nn.Linear(256, 81)  # 81 possíveis saídas (9x9 grid)
+        
+#     def forward(self, x):
+#         # Camadas convolucionais
+#         x = F.relu(self.bn1(self.conv1(x)))
+#         x = F.relu(self.bn2(self.conv2(x)))
+#         x = F.relu(self.bn3(self.conv3(x)))
+        
+#         # Achatando para alimentar nas camadas densas
+#         x = x.view(x.size(0), -1)
+        
+#         # Camadas densas
+#         x = F.relu(self.fc1(x))
+#         x = F.relu(self.fc2(x))
+#         x = self.fc3(x)
+        
+#         return x
 class DQN(nn.Module):
     def __init__(self):
-        super(DQN, self).__init__()
-        
-        # Camadas convolucionais
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.conv2 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm2d(128)
-        self.conv3 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
-        self.bn3 = nn.BatchNorm2d(256)
-        
-        # Camadas densas
-        self.fc1 = nn.Linear(256 * 9 * 9, 512)
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, 81)  # 81 possíveis saídas (9x9 grid)
-        
+        super().__init__()
+        # convoluções menores
+        self.conv1 = nn.Conv2d(3, 32, 3, 1, 1)
+        self.bn1   = nn.BatchNorm2d(32)
+        self.conv2 = nn.Conv2d(32, 64, 3, 1, 1)
+        self.bn2   = nn.BatchNorm2d(64)
+        self.conv3 = nn.Conv2d(64, 128, 3, 1, 1)
+        self.bn3   = nn.BatchNorm2d(128)
+
+        flat = 128 * 9 * 9  # 128 canais, 9×9
+
+        # cabeça Advantage
+        self.fc_a1 = nn.Linear(flat, 256)
+        self.fc_a2 = nn.Linear(256, 81)   # 81 ações
+
+        # cabeça Value
+        self.fc_v1 = nn.Linear(flat, 256)
+        self.fc_v2 = nn.Linear(256, 1)
+
     def forward(self, x):
-        # Camadas convolucionais
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
         x = F.relu(self.bn3(self.conv3(x)))
-        
-        # Achatando para alimentar nas camadas densas
         x = x.view(x.size(0), -1)
-        
-        # Camadas densas
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        
-        return x
+
+        a = F.relu(self.fc_a1(x))
+        a = self.fc_a2(a)
+
+        v = F.relu(self.fc_v1(x))
+        v = self.fc_v2(v).expand_as(a)
+
+        q = v + a - a.mean(1, keepdim=True)
+        return q
+
 
 # Função para selecionar uma ação epsilon-greedy
-def select_action(state, policy_net, epsilon, valid_moves):
+def select_action(state, policy_net, epsilon, valid_moves, device):
     """
     Seleciona uma ação usando a política epsilon-greedy
     """
@@ -295,6 +360,7 @@ def select_action(state, policy_net, epsilon, valid_moves):
     
     # Caso contrário, escolhe a melhor ação de acordo com a rede
     with torch.no_grad():
+        state = state.to(device)
         q_values = policy_net(state.unsqueeze(0)).squeeze()
         
         # Filtra apenas as ações válidas
@@ -351,8 +417,27 @@ def optimize_model(policy_net, target_net, optimizer, memory, device, batch_size
     
     # Calcula os valores Q esperados usando a rede alvo
     next_q_values = torch.zeros(batch_size, device=device)
+    # ------------------------------------------------------------------
+    # next_q_values com máscara, sem depender do objeto env
+    # ------------------------------------------------------------------
     with torch.no_grad():
-        next_q_values = target_net(next_state_batch).max(1)[0]
+        q_target_all = target_net(next_state_batch)        # shape (B, 81)
+
+        # Canal 2 contém jogadas possíveis; transformamos em máscara booleana
+        # next_state_batch shape: (B, 3, 9, 9)
+        valid_mask = next_state_batch[:, 2, :, :]          # (B, 9, 9)
+        valid_mask = valid_mask.view(valid_mask.size(0), -1).bool()  # (B, 81)
+
+        # Atribui -inf às ações ilegais
+        q_target_all[~valid_mask] = -float('inf')
+
+        # Double-DQN opcional: usa policy para escolher a-max
+        # a_max = policy_net(next_state_batch).masked_fill(~valid_mask, -float('inf')).argmax(1, keepdim=True)
+        # next_q_values = q_target_all.gather(1, a_max).squeeze(1)
+
+        # DQN simples:
+        next_q_values = q_target_all.max(1)[0]
+
     
     # Mascara os estados terminais
     next_q_values[done_batch] = 0.0
@@ -479,11 +564,18 @@ def train():
             if env.current_player == model_symbol:
                 # Obtém as jogadas válidas
                 valid_moves = env.get_valid_moves()
-                
-                # Seleciona uma ação
-                action = select_action(state, policy_net, epsilon, valid_moves)
-                
-                # Realiza a ação e observa o resultado
+
+                # Se não houver jogadas possíveis, terminar episódio de forma limpa
+                if not valid_moves:
+                    game_over = True
+                    break
+
+                action = select_action(state, policy_net, epsilon, valid_moves, device)
+                # Segurança extra – select_action NUNCA deveria devolver None aqui
+                if action is None:
+                    game_over = True
+                    break
+
                 next_state, reward, done = env.make_move(action)
                 
                 # Armazena a transição na memória

@@ -9,6 +9,7 @@ import time
 import json
 import copy
 import math
+import tempfile, os, torch
 import ai  # Importa o módulo de IA do jogo da velha avançado
 
 # Configurações de treinamento
@@ -25,7 +26,7 @@ CONFIG = {
     "target_update": 500,        # Frequência para atualizar a rede alvo
     "save_interval": 5000,        # Frequência para salvar o modelo
     "checkpoint_dir": "model_checkpoints",  # Diretório para salvar checkpoints
-    "episodes": 4000            # Número de jogos a serem treinados
+    "episodes": 10_000            # Número de jogos a serem treinados
 }
 
 # Garante que o diretório de checkpoints existe
@@ -394,11 +395,11 @@ def optimize_model(policy_net, target_net, optimizer, memory, device, batch_size
     batch = list(zip(*transitions))
     
     # Extrai os componentes
-    state_batch = torch.stack(batch[0]).to(device)
+    state_batch = torch.stack([s.to(device, non_blocking=True)     for s in batch[0]])
     action_batch = batch[1]
-    next_state_batch = torch.stack(batch[2]).to(device)
-    reward_batch = torch.FloatTensor(batch[3]).to(device)
-    done_batch = torch.BoolTensor(batch[4]).to(device)
+    next_state_batch = torch.stack([ns.to(device, non_blocking=True) for ns in batch[2]])
+    reward_batch = torch.tensor(batch[3], device=device, dtype=torch.float32)
+    done_batch   = torch.tensor(batch[4], device=device, dtype=torch.bool)
     
     # Calcula os valores Q atuais para as ações tomadas
     q_values = policy_net(state_batch)
@@ -482,7 +483,7 @@ def load_checkpoint(filename, policy_net, target_net, optimizer, memory, device)
     """
     if os.path.isfile(filename):
         print(f"Carregando checkpoint '{filename}'...")
-        checkpoint = torch.load(filename, map_location=device)
+        checkpoint = torch.load(filename, map_location=device, weights_only=False)
         
         policy_net.load_state_dict(checkpoint['policy_net_state_dict'])
         target_net.load_state_dict(checkpoint['target_net_state_dict'])
@@ -490,6 +491,8 @@ def load_checkpoint(filename, policy_net, target_net, optimizer, memory, device)
         
         memory.memory = checkpoint['memory']
         memory.position = checkpoint['memory_position']
+        for i, (s, a, ns, r, d) in enumerate(memory.memory):
+            memory.memory[i] = (s.cpu(), a, ns.cpu(), r, d)
         
         episode = checkpoint['episode']
         step = checkpoint['step']
@@ -599,22 +602,22 @@ def train():
                 step += 1
                 
                 # Salva o modelo periodicamente
-                if step % CONFIG["save_interval"] == 0:
-                    save_checkpoint(policy_net, target_net, optimizer, memory, episode, step, stats,
-                                   os.path.join(CONFIG["checkpoint_dir"], f"checkpoint_step_{step}.pt"))
-                    save_checkpoint(policy_net, target_net, optimizer, memory, episode, step, stats,
-                                   checkpoint_path)
+                # if step % CONFIG["save_interval"] == 0:
+                #     save_checkpoint(policy_net, target_net, optimizer, memory, episode, step, stats,
+                #                    os.path.join(CONFIG["checkpoint_dir"], f"checkpoint_step_{step}.pt"))
+                #     save_checkpoint(policy_net, target_net, optimizer, memory, episode, step, stats,
+                #                    checkpoint_path)
                     
-                    # Exibe estatísticas
-                    win_rate = stats['wins'] / max(1, stats['episodes']) * 100
-                    loss_rate = stats['losses'] / max(1, stats['episodes']) * 100
-                    draw_rate = stats['draws'] / max(1, stats['episodes']) * 100
+                #     # Exibe estatísticas
+                #     win_rate = stats['wins'] / max(1, stats['episodes']) * 100
+                #     loss_rate = stats['losses'] / max(1, stats['episodes']) * 100
+                #     draw_rate = stats['draws'] / max(1, stats['episodes']) * 100
                     
-                    print(f"Passo {step}, Epsilon {epsilon:.4f}, Vitórias {win_rate:.1f}%, Derrotas {loss_rate:.1f}%, Empates {draw_rate:.1f}%")
+                #     print(f"Passo {step}, Epsilon {epsilon:.4f}, Vitórias {win_rate:.1f}%, Derrotas {loss_rate:.1f}%, Empates {draw_rate:.1f}%")
                     
-                    # Salva estatísticas em um arquivo JSON
-                    with open(os.path.join(CONFIG["checkpoint_dir"], "stats.json"), 'w') as f:
-                        json.dump(stats, f)
+                #     # Salva estatísticas em um arquivo JSON
+                #     with open(os.path.join(CONFIG["checkpoint_dir"], "stats.json"), 'w') as f:
+                #         json.dump(stats, f)
             
             # Se for a vez do oponente, faz a jogada usando minimax
             else:
@@ -645,19 +648,46 @@ def train():
                 #if episode % 100 == 0:
                 print(f"Episódio {episode} - Recompensa total: {total_reward}, Jogadas: {moves_made}")
                 print(f"Status: Vitórias {stats['wins']}, Derrotas {stats['losses']}, Empates {stats['draws']}")
+                # --- dentro do loop principal, depois de atualizar stats e imprimir resultado ---
+                # grava sempre no fim de cada episódio
+
+                ckpt_dir  = CONFIG["checkpoint_dir"]
+                latest    = os.path.join(ckpt_dir, "latest_checkpoint.pt")
+                previous  = os.path.join(ckpt_dir, "prev_checkpoint.pt")
+
+                # 1) grava em tmp
+                fd, tmp = tempfile.mkstemp(dir=ckpt_dir, suffix=".tmp")
+                os.close(fd)
+                save_checkpoint(policy_net, target_net, optimizer,
+                                memory, episode, step, stats, tmp)
+
+                # 2) move antigo latest -> prev (atômico)
+                if os.path.exists(latest):
+                    os.replace(latest, previous)            # sobrescreve prev se existir
+
+                # 3) move tmp -> latest (atômico)
+                os.replace(tmp, latest)
+
+                # opcional: snapshot só‑pesos / stats legíveis por fora
+                save_checkpoint(policy_net, target_net, optimizer,
+                                memory, episode, step, stats,
+                                os.path.join(ckpt_dir, "model_final.pt"))
+                with open(os.path.join(ckpt_dir, "stats_final.json"), "w") as f:
+                    json.dump(stats, f)
+
+
+    # # Final do treinamento
+    # print("Treinamento concluído!")
     
-    # Final do treinamento
-    print("Treinamento concluído!")
+    # # Salva o modelo final
+    # save_checkpoint(policy_net, target_net, optimizer, memory, CONFIG["episodes"], step, stats,
+    #                os.path.join(CONFIG["checkpoint_dir"], "model_final.pt"))
+    # save_checkpoint(policy_net, target_net, optimizer, memory, CONFIG["episodes"], step, stats,
+    #                checkpoint_path)
     
-    # Salva o modelo final
-    save_checkpoint(policy_net, target_net, optimizer, memory, CONFIG["episodes"], step, stats,
-                   os.path.join(CONFIG["checkpoint_dir"], "model_final.pt"))
-    save_checkpoint(policy_net, target_net, optimizer, memory, CONFIG["episodes"], step, stats,
-                   checkpoint_path)
-    
-    # Salva estatísticas finais
-    with open(os.path.join(CONFIG["checkpoint_dir"], "stats_final.json"), 'w') as f:
-        json.dump(stats, f)
+    # # Salva estatísticas finais
+    # with open(os.path.join(CONFIG["checkpoint_dir"], "stats_final.json"), 'w') as f:
+    #     json.dump(stats, f)
 
 if __name__ == "__main__":
     train()

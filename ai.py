@@ -1,6 +1,8 @@
 # ai.py - Módulo de Inteligência Artificial para o Jogo da Velha Avançado
 
-def minmax(board, depth, alpha, beta, maximizing_player, next_sub_board):
+MAX_RECURSION_DEPTH = 7000
+
+def minmax(board, depth, alpha, beta, maximizing_player, next_sub_board, _lvl=0):
     """
     Implementação do algoritmo minimax com poda alfa-beta.
     
@@ -16,6 +18,8 @@ def minmax(board, depth, alpha, beta, maximizing_player, next_sub_board):
     Returns:
         Tupla (score, move) com a pontuação e o melhor movimento encontrado
     """
+    if _lvl >= MAX_RECURSION_DEPTH:
+        return evaluate(board, next_sub_board), None
     # Verificar condições de término
     if is_game_over(board) or depth == 0:
         return evaluate(board), None
@@ -26,7 +30,7 @@ def minmax(board, depth, alpha, beta, maximizing_player, next_sub_board):
         for move in get_possible_moves(board, next_sub_board):
             # Simula o movimento
             board[move[0]][move[1]][move[2]][move[3]] = 'O'
-            eval, _ = minmax(board, depth - 1, alpha, beta, False, (move[2], move[3]))
+            eval, _ = minmax(board, depth - 1, alpha, beta, False, (move[2], move[3]), _lvl=_lvl + 1)
             #print(board)
             # Desfaz o movimento
             board[move[0]][move[1]][move[2]][move[3]] = None
@@ -44,7 +48,7 @@ def minmax(board, depth, alpha, beta, maximizing_player, next_sub_board):
         for move in get_possible_moves(board, next_sub_board):
             # Simula o movimento
             board[move[0]][move[1]][move[2]][move[3]] = 'X'
-            eval, _ = minmax(board, depth - 1, alpha, beta, True, (move[2], move[3]))
+            eval, _ = minmax(board, depth - 1, alpha, beta, True, (move[2], move[3]), _lvl=_lvl + 1)
             # Desfaz o movimento
             board[move[0]][move[1]][move[2]][move[3]] = None
             

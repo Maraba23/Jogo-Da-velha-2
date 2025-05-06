@@ -3,6 +3,10 @@ import sys
 import random
 import math
 import ai  # Importa o módulo de IA que criamos
+import torch
+import numpy as np
+from torch import nn
+import torch.nn.functional as F
 
 # Inicializa o Pygame
 pygame.init()
@@ -49,6 +53,119 @@ won_sub_boards = [[None for _ in range(3)] for _ in range(3)]
 
 # Efeitos visuais
 particles = []
+
+# Classe DQN para o modelo treinado
+class DQN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # convoluções menores
+        self.conv1 = nn.Conv2d(3, 32, 3, 1, 1)
+        self.bn1   = nn.BatchNorm2d(32)
+        self.conv2 = nn.Conv2d(32, 64, 3, 1, 1)
+        self.bn2   = nn.BatchNorm2d(64)
+        self.conv3 = nn.Conv2d(64, 128, 3, 1, 1)
+        self.bn3   = nn.BatchNorm2d(128)
+
+        flat = 128 * 9 * 9  # 128 canais, 9×9
+
+        # cabeça Advantage
+        self.fc_a1 = nn.Linear(flat, 256)
+        self.fc_a2 = nn.Linear(256, 81)   # 81 ações
+
+        # cabeça Value
+        self.fc_v1 = nn.Linear(flat, 256)
+        self.fc_v2 = nn.Linear(256, 1)
+
+    def forward(self, x):
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = x.view(x.size(0), -1)
+
+        a = F.relu(self.fc_a1(x))
+        a = self.fc_a2(a)
+
+        v = F.relu(self.fc_v1(x))
+        v = self.fc_v2(v).expand_as(a)
+
+        q = v + a - a.mean(1, keepdim=True)
+        return q
+
+# Função para carregar o modelo treinado
+def load_model(model_path):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = DQN().to(device)
+    
+    try:
+        checkpoint = torch.load(model_path, map_location=device)
+        model.load_state_dict(checkpoint['policy_net_state_dict'])
+        model.eval()  # Coloca o modelo em modo de avaliação
+        print(f"Modelo carregado com sucesso de {model_path}")
+        return model, device
+    except Exception as e:
+        print(f"Erro ao carregar modelo: {e}")
+        return None, device
+
+# Função para converter o estado do jogo para o formato de entrada do modelo
+def get_state_tensor(main_board, next_sub_board):
+    # Criamos um tensor 3D de tamanho 3x9x9 (3 camadas, 9x9 grid)
+    # Camada 0: Posições onde está X (1 onde tiver X, 0 caso contrário)
+    # Camada 1: Posições onde está O (1 onde tiver O, 0 caso contrário)
+    # Camada 2: Posições onde é possível jogar (1 onde for possível, 0 caso contrário)
+    
+    state = np.zeros((3, 9, 9), dtype=np.float32)
+    
+    # Preenchendo as camadas 0 e 1 (posições de X e O)
+    for row in range(3):
+        for col in range(3):
+            for sub_row in range(3):
+                for sub_col in range(3):
+                    # Calculando a posição linear no grid 9x9
+                    grid_row = row * 3 + sub_row
+                    grid_col = col * 3 + sub_col
+                    
+                    # Marcando posições de X e O
+                    if main_board[row][col][sub_row][sub_col] == 'X':
+                        state[0, grid_row, grid_col] = 1
+                    elif main_board[row][col][sub_row][sub_col] == 'O':
+                        state[1, grid_row, grid_col] = 1
+    
+    # Preenchendo a camada 2 (jogadas possíveis)
+    possible_moves = ai.get_possible_moves(main_board, next_sub_board)
+    for move in possible_moves:
+        row, col, sub_row, sub_col = move
+        grid_row = row * 3 + sub_row
+        grid_col = col * 3 + sub_col
+        state[2, grid_row, grid_col] = 1
+        
+    return torch.FloatTensor(state)
+
+# Função para obter a jogada do modelo treinado
+def get_model_move(model, device, main_board, next_sub_board):
+    state = get_state_tensor(main_board, next_sub_board)
+    valid_moves = ai.get_possible_moves(main_board, next_sub_board)
+    
+    if not valid_moves:
+        return None
+    
+    # Convertendo movimentos válidos para índices no grid 9x9
+    valid_indices = []
+    for move in valid_moves:
+        row, col, sub_row, sub_col = move
+        index = (row * 3 + sub_row) * 9 + (col * 3 + sub_col)
+        valid_indices.append((index, move))
+    
+    with torch.no_grad():
+        state = state.to(device)
+        q_values = model(state.unsqueeze(0)).squeeze()
+        
+        # Filtra apenas as ações válidas
+        valid_q_values = [(i, q_values[i].item(), move) for i, move in valid_indices]
+        
+        # Escolhe a ação com maior valor Q entre as válidas
+        _, _, best_move = max(valid_q_values, key=lambda x: x[1])
+        
+        return best_move
 
 class Particle:
     def __init__(self, x, y, color):
@@ -239,10 +356,11 @@ def display_game_status(current_player, next_sub_board, x_wins, o_wins):
     pygame.draw.line(screen, LINE_COLOR, (0, HEIGHT-50), (WIDTH, HEIGHT-50), 2)
     
     # Quem é o jogador atual
+    ai_text = "MinMax" if use_minimax else "Modelo"
     if current_player == human_player:
-        player_text = f"Deep: {difficulty} | {current_player} (Você)"
+        player_text = f"{ai_text}: {difficulty} | {current_player} (Você)"
     else:
-        player_text = f"Deep: {difficulty} | {current_player} (IA)"
+        player_text = f"{ai_text}: {difficulty} | {current_player} (IA)"
     
     player_surface = font.render(player_text, True, TEXT_COLOR)
     screen.blit(player_surface, (10, HEIGHT-40))
@@ -394,6 +512,12 @@ ai_move_delay = 0
 difficulty = 3  # Profundidade padrão para o minimax
 human_player = 'X'  # Símbolo do jogador humano (padrão)
 ai_player = 'O'    # Símbolo da IA (padrão)
+use_minimax = True  # Usar minimax por padrão
+
+# Variáveis para o modelo treinado
+model_x = None
+model_o = None
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Timer para animação da IA "pensando"
 thinking_timer = 0
@@ -417,9 +541,12 @@ def reset_game():
 
 # Tela inicial
 def show_title_screen():
+    global model_x, model_o, device, use_minimax
+    
     running = True
     selected_difficulty = "Normal"  # Padrão
     player_symbol = "X"  # Padrão - jogador usa X
+    ai_type = "MinMax"  # Padrão - usar MinMax
     
     while running:
         screen.fill((230, 230, 250))
@@ -450,7 +577,7 @@ def show_title_screen():
             y_pos += 25
         
         # Seleção de símbolo
-        y_pos = HEIGHT/2 + 20
+        y_pos = HEIGHT/2 - 20
         symbol_text = font.render("Escolha seu símbolo:", True, TEXT_COLOR)
         symbol_text_rect = symbol_text.get_rect(center=(WIDTH/2, y_pos))
         screen.blit(symbol_text, symbol_text_rect)
@@ -478,39 +605,77 @@ def show_title_screen():
             if symbol_rect.collidepoint(pygame.mouse.get_pos()):
                 pygame.draw.rect(screen, (220, 230, 255), symbol_rect, width=2, border_radius=5)
         
-        # Botões de dificuldade
-        difficulties = ["Fácil", "Normal", "Difícil"]
+        # Seleção de tipo de IA
         y_pos += 60
+        ai_text = font.render("Escolha o tipo de IA:", True, TEXT_COLOR)
+        ai_text_rect = ai_text.get_rect(center=(WIDTH/2, y_pos))
+        screen.blit(ai_text, ai_text_rect)
         
-        for diff in difficulties:
-            if diff == selected_difficulty:
+        y_pos += 40
+        ai_types = ["MinMax", "Modelo"]
+        ai_rects = []
+        
+        for i, ai_opt in enumerate(ai_types):
+            rect_x = WIDTH/2 - 70 + i * 80
+            ai_rect = pygame.Rect(rect_x, y_pos - 20, 60, 40)
+            ai_rects.append(ai_rect)
+            
+            if ai_opt == ai_type:
+                pygame.draw.rect(screen, (200, 220, 255), ai_rect, border_radius=5)
                 color = (50, 120, 200)
-                pygame.draw.rect(screen, (200, 220, 255), 
-                               (WIDTH/2 - 60, y_pos - 15, 120, 40), 
-                               border_radius=5)
             else:
                 color = TEXT_COLOR
-                
-            text = font.render(diff, True, color)
-            text_rect = text.get_rect(center=(WIDTH/2, y_pos))
+            
+            text = font.render(ai_opt, True, color)
+            text_rect = text.get_rect(center=ai_rect.center)
             screen.blit(text, text_rect)
             
-            # Área clicável
-            diff_rect = pygame.Rect(WIDTH/2 - 60, y_pos - 15, 120, 30)
+            # Efeito hover
+            if ai_rect.collidepoint(pygame.mouse.get_pos()):
+                pygame.draw.rect(screen, (220, 230, 255), ai_rect, width=2, border_radius=5)
+        
+        # Botões de dificuldade (só mostra se MinMax estiver selecionado)
+        if ai_type == "MinMax":
+            difficulties = ["Fácil", "Normal", "Difícil"]
+            y_pos += 60
             
-            # Verifica cliques
-            mouse_pos = pygame.mouse.get_pos()
-            mouse_clicked = pygame.mouse.get_pressed()[0]
+            diff_text = font.render("Dificuldade:", True, TEXT_COLOR)
+            diff_text_rect = diff_text.get_rect(center=(WIDTH/2, y_pos))
+            screen.blit(diff_text, diff_text_rect)
             
-            if diff_rect.collidepoint(mouse_pos):
-                if not mouse_clicked:
-                    pygame.draw.rect(screen, (220, 230, 255), 
-                                   (WIDTH/2 - 60, y_pos - 15, 120, 30), 
-                                   width=2, border_radius=5)
-                elif mouse_clicked:
-                    selected_difficulty = diff
-            
-            y_pos += 50
+            y_pos += 40
+            for diff in difficulties:
+                if diff == selected_difficulty:
+                    color = (50, 120, 200)
+                    pygame.draw.rect(screen, (200, 220, 255), 
+                                   (WIDTH/2 - 60, y_pos - 15, 120, 40), 
+                                   border_radius=5)
+                else:
+                    color = TEXT_COLOR
+                    
+                text = font.render(diff, True, color)
+                text_rect = text.get_rect(center=(WIDTH/2, y_pos))
+                screen.blit(text, text_rect)
+                
+                # Área clicável
+                diff_rect = pygame.Rect(WIDTH/2 - 60, y_pos - 15, 120, 30)
+                
+                # Verifica cliques
+                mouse_pos = pygame.mouse.get_pos()
+                mouse_clicked = pygame.mouse.get_pressed()[0]
+                
+                if diff_rect.collidepoint(mouse_pos):
+                    if not mouse_clicked:
+                        pygame.draw.rect(screen, (220, 230, 255), 
+                                       (WIDTH/2 - 60, y_pos - 15, 120, 30), 
+                                       width=2, border_radius=5)
+                    elif mouse_clicked:
+                        selected_difficulty = diff
+                
+                y_pos += 50
+        else:
+            # Se o modelo está selecionado, avance para deixar espaço igual
+            y_pos += 150
         
         # Botão de iniciar
         start_rect = pygame.Rect(WIDTH/2 - 80, HEIGHT - 80, 160, 50)
@@ -535,16 +700,34 @@ def show_title_screen():
                     if rect.collidepoint(event.pos):
                         player_symbol = symbols[i]
                 
+                # Verifica clique nos tipos de IA
+                for i, rect in enumerate(ai_rects):
+                    if rect.collidepoint(event.pos):
+                        ai_type = ai_types[i]
+                
                 # Verifica clique no botão iniciar
                 if start_rect.collidepoint(event.pos):
                     # Define a dificuldade
                     global difficulty, ai_player, human_player, ai_thinking, ai_move_delay
-                    if selected_difficulty == "Fácil":
-                        difficulty = 4
-                    elif selected_difficulty == "Normal":
-                        difficulty = 6
-                    else:  # Difícil
-                        difficulty = 8
+                    
+                    if ai_type == "MinMax":
+                        use_minimax = True
+                        if selected_difficulty == "Fácil":
+                            difficulty = 4
+                        elif selected_difficulty == "Normal":
+                            difficulty = 6
+                        else:  # Difícil
+                            difficulty = 8
+                    else:  # Modelo
+                        use_minimax = False
+                        difficulty = 10  # Apenas para exibição
+                        # Carrega os modelos se ainda não estiverem carregados
+                        if model_x is None:
+                            print("Carregando modelo X...")
+                            model_x, device = load_model("model_checkpoints/model_x_final.pt")
+                        if model_o is None:
+                            print("Carregando modelo O...")
+                            model_o, device = load_model("model_checkpoints/model_o_final.pt")
                     
                     # Define os símbolos dos jogadores
                     human_player = player_symbol
@@ -627,7 +810,8 @@ while True:
             thinking_dots = "." * ((thinking_timer % 3) + 1)
             thinking_timer += 1
             
-        thinking_text = f"IA pensando{thinking_dots}"
+        ai_type_text = "MinMax" if use_minimax else "Modelo"
+        thinking_text = f"IA ({ai_type_text}) pensando{thinking_dots}"
         display_message(thinking_text, HEIGHT/2 - 200, 'normal', 
                       CIRCLE_COLOR if ai_player == 'O' else CROSS_COLOR)
         
@@ -635,12 +819,20 @@ while True:
         if pygame.time.get_ticks() - ai_move_delay > 800:  # 800 ms de atraso
             # Obtém a melhor jogada
             try:
-                # Se a IA joga com 'O', ela quer maximizar. Se joga com 'X', quer minimizar
-                is_maximizing = ai_player == 'O'
-                
-                reward, best_move = ai.minmax(main_board, difficulty, float('-inf'), float('inf'), 
-                                       is_maximizing, next_sub_board)
-                print(f"Melhor jogada: {best_move} com recompensa: {reward}")
+                if use_minimax:
+                    # Usa o algoritmo minimax
+                    is_maximizing = ai_player == 'O'
+                    
+                    reward, best_move = ai.minmax(main_board, difficulty, float('-inf'), float('inf'), 
+                                           is_maximizing, next_sub_board)
+                    print(f"Melhor jogada (MinMax): {best_move} com recompensa: {reward}")
+                else:
+                    # Usa o modelo treinado
+                    if ai_player == 'X':
+                        best_move = get_model_move(model_x, device, main_board, next_sub_board)
+                    else:
+                        best_move = get_model_move(model_o, device, main_board, next_sub_board)
+                    print(f"Melhor jogada (Modelo): {best_move}")
                 
                 if best_move:
                     play_move(best_move[0], best_move[1], best_move[2], best_move[3], current_player)

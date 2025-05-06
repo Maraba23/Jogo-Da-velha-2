@@ -24,7 +24,7 @@ CONFIG = {
     "target_update": 500,         # Frequência para atualizar a rede alvo
     "save_interval": 5000,        # Frequência para salvar o modelo
     "checkpoint_dir": "model_checkpoints",  # Diretório para salvar checkpoints
-    "episodes": 3_500            # Número de jogos a serem treinados
+    "episodes": 200            # Número de jogos a serem treinados
 }
 
 # Garante que o diretório de checkpoints existe
@@ -129,7 +129,7 @@ class GameState:
                 return self.get_valid_moves()
                 
         return valid_moves
-    
+
     def make_move(self, move):
         """
         Realiza uma jogada no tabuleiro e retorna (nova_observação, recompensa, terminado)
@@ -144,6 +144,49 @@ class GameState:
         
         # Marca a posição
         self.main_board[row][col][sub_row][sub_col] = self.current_player
+        
+        # ------- INÍCIO DO REWARD SHAPING -------
+        # Apenas analisa se o sub-tabuleiro ainda não foi ganho
+        if self.won_sub_boards[row][col] is None:
+            # Determina o oponente
+            opponent = 'X' if self.current_player == 'O' else 'O'
+            
+            # Verifica todas as linhas horizontais, verticais e diagonais
+            # do sub-tabuleiro onde a peça foi colocada
+            sub_board = self.main_board[row][col]
+            
+            # Linhas horizontais
+            for r in range(3):
+                line = [sub_board[r][0], sub_board[r][1], sub_board[r][2]]
+                # Bônus se o jogador tem duas peças em linha com uma vazia
+                if line.count(self.current_player) == 2 and line.count(None) == 1:
+                    reward += 0.2
+                # Penalidade se o oponente tinha duas peças em linha e não foi bloqueado
+                if line.count(opponent) == 2 and line.count(None) == 1:
+                    reward -= 0.2
+            
+            # Colunas verticais
+            for c in range(3):
+                line = [sub_board[0][c], sub_board[1][c], sub_board[2][c]]
+                if line.count(self.current_player) == 2 and line.count(None) == 1:
+                    reward += 0.2
+                if line.count(opponent) == 2 and line.count(None) == 1:
+                    reward -= 0.2
+            
+            # Diagonal principal
+            line = [sub_board[0][0], sub_board[1][1], sub_board[2][2]]
+            if line.count(self.current_player) == 2 and line.count(None) == 1:
+                reward += 0.2
+            if line.count(opponent) == 2 and line.count(None) == 1:
+                reward -= 0.2
+            
+            # Diagonal secundária
+            line = [sub_board[0][2], sub_board[1][1], sub_board[2][0]]
+            if line.count(self.current_player) == 2 and line.count(None) == 1:
+                reward += 0.2
+            if line.count(opponent) == 2 and line.count(None) == 1:
+                reward -= 0.2
+        # ------- FIM DO REWARD SHAPING -------
         
         # Verifica se o sub-tabuleiro foi ganho
         sub_tabuleiro_ganho = False
@@ -203,10 +246,14 @@ class GameState:
                     # Subtrai -1 por cada sub-tabuleiro perdido
                     reward -= x_wins
         
+        # Clip de reward para ficar entre -1.0 e 1.0
+        reward /= 10.0  # Normaliza a recompensa
+        reward = max(-1.0, min(1.0, reward))
+        
         # Troca o jogador
         self.current_player = 'O' if self.current_player == 'X' else 'X'
         
-        return self.get_state_tensor(), reward, self.game_over
+        return self.get_state_tensor(), reward, self.game_over    
 
 # Classe para a memória de experiência (armazena as transições para treinamento)
 class ReplayMemory:

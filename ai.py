@@ -31,7 +31,7 @@ def minmax(board, depth, alpha, beta, maximizing_player, next_sub_board, _lvl=0)
             # Simula o movimento
             board[move[0]][move[1]][move[2]][move[3]] = 'O'
             eval, _ = minmax(board, depth - 1, alpha, beta, False, (move[2], move[3]), _lvl=_lvl + 1)
-            #print(board)
+            print(board)
             # Desfaz o movimento
             board[move[0]][move[1]][move[2]][move[3]] = None
             

@@ -11,6 +11,55 @@ import copy
 import math
 import tempfile, os, torch
 import ai  # Importa o módulo de IA do jogo da velha avançado
+import sys
+from colorama import Fore, Style, init
+
+def exibir_status(episode, total_reward_x, total_reward_o, moves_made, stats_x, stats_o, clear_previous=True):
+    import sys
+    import os
+    
+    
+    # Tenta usar colorama para cores (se estiver instalado)
+    try:
+        from colorama import Fore, Style, init
+        init(autoreset=True)  # Autoreset ajuda a evitar problemas com cores
+        # Definição das cores
+        LABEL_COLOR = Fore.CYAN
+        VALUE_COLOR = Fore.WHITE
+        HIGHLIGHT = Style.BRIGHT
+        RESET = Style.RESET_ALL
+    except ImportError:
+        LABEL_COLOR = VALUE_COLOR = HIGHLIGHT = RESET = ""
+    
+    # Calcula estatísticas
+    total_games = stats_x['x_wins'] + stats_o['o_wins'] + stats_x['draws']
+    pct_x_wins = (stats_x['x_wins'] / total_games) * 100 if total_games else 0
+    pct_o_wins = (stats_o['o_wins'] / total_games) * 100 if total_games else 0
+    pct_draws  = (stats_x['draws']  / total_games) * 100 if total_games else 0
+
+    # Formatação da saída com caracteres de escape para sobrescrever
+    output = (
+        f"\r{LABEL_COLOR}🧠 Episódio:{RESET} {HIGHLIGHT}{episode:6d}{RESET} | "
+        f"{LABEL_COLOR}🎯 Jogadas:{RESET} {HIGHLIGHT}{moves_made:3d}{RESET} | "
+        f"{LABEL_COLOR}🏆 Recompensas - X:{RESET} {HIGHLIGHT}{total_reward_x:7.2f}{RESET} | "
+        f"{LABEL_COLOR}O:{RESET} {HIGHLIGHT}{total_reward_o:7.2f}{RESET} || "
+        f"{LABEL_COLOR}📊 Vitórias - X:{RESET} {HIGHLIGHT}{stats_x['x_wins']:5d}{RESET} "
+        f"({pct_x_wins:5.1f}%) | "
+        f"{LABEL_COLOR}O:{RESET} {HIGHLIGHT}{stats_o['o_wins']:5d}{RESET} "
+        f"({pct_o_wins:5.1f}%) | "
+        f"{LABEL_COLOR}Empates:{RESET} {HIGHLIGHT}{stats_x['draws']:5d}{RESET} "
+        f"({pct_draws:5.1f}%)"
+    )
+    
+    # Escreve e força a atualização imediatamente
+    sys.stdout.write(output)
+    sys.stdout.flush()
+    
+    # Desativa outros prints de status padrão (adicione isso ao seu código principal)
+    # Comentar ou remover os prints existentes como:
+    # print(f"Episódio {episode} - Recompensa X: {total_reward_x}, Recompensa O: {total_reward_o}, Jogadas: {moves_made}")
+    # print(f"Status: X ganhou {stats_x['x_wins']}, O ganhou {stats_o['o_wins']}, Empates {stats_x['draws']}")
+
 
 # Configurações de treinamento
 CONFIG = {
@@ -24,7 +73,7 @@ CONFIG = {
     "target_update": 500,         # Frequência para atualizar a rede alvo
     "save_interval": 5000,        # Frequência para salvar o modelo
     "checkpoint_dir": "model_checkpoints",  # Diretório para salvar checkpoints
-    "episodes": 11_000            # Número de jogos a serem treinados
+    "episodes": 12_000            # Número de jogos a serem treinados
 }
 
 # Garante que o diretório de checkpoints existe
@@ -691,8 +740,10 @@ def train_self_play():
         stats_o['epsilon_o'].append(epsilon_o)
         
         # Mostra resultado a cada episódio
-        print(f"Episódio {episode} - Recompensa X: {total_reward_x}, Recompensa O: {total_reward_o}, Jogadas: {moves_made}")
-        print(f"Status: X ganhou {stats_x['x_wins']}, O ganhou {stats_o['o_wins']}, Empates {stats_x['draws']}")
+        #print(f"Episódio {episode} - Recompensa X: {total_reward_x}, Recompensa O: {total_reward_o}, Jogadas: {moves_made}")
+        #print(f"Status: X ganhou {stats_x['x_wins']}, O ganhou {stats_o['o_wins']}, Empates {stats_x['draws']}")
+        # def exibir_status(episode, total_reward_x, total_reward_o, moves_made, stats_x, stats_o):
+        exibir_status(episode, total_reward_x, total_reward_o, moves_made, stats_x, stats_o)
         
         # Salva checkpoints a cada episódio
         ckpt_dir = CONFIG["checkpoint_dir"]

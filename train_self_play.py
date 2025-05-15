@@ -740,10 +740,10 @@ def train_self_play():
         stats_o['epsilon_o'].append(epsilon_o)
         
         # Mostra resultado a cada episódio
-        #print(f"Episódio {episode} - Recompensa X: {total_reward_x}, Recompensa O: {total_reward_o}, Jogadas: {moves_made}")
-        #print(f"Status: X ganhou {stats_x['x_wins']}, O ganhou {stats_o['o_wins']}, Empates {stats_x['draws']}")
+        print(f"Episódio {episode} - Recompensa X: {total_reward_x}, Recompensa O: {total_reward_o}, Jogadas: {moves_made}")
+        print(f"Status: X ganhou {stats_x['x_wins']}, O ganhou {stats_o['o_wins']}, Empates {stats_x['draws']}")
         # def exibir_status(episode, total_reward_x, total_reward_o, moves_made, stats_x, stats_o):
-        exibir_status(episode, total_reward_x, total_reward_o, moves_made, stats_x, stats_o)
+        #exibir_status(episode, total_reward_x, total_reward_o, moves_made, stats_x, stats_o)
         
         # Salva checkpoints a cada episódio
         ckpt_dir = CONFIG["checkpoint_dir"]
